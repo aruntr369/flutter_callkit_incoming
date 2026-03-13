@@ -66,9 +66,17 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
 
     @SuppressLint("MissingPermission")
     override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.action ?: return
-        val data =
-            intent.extras?.getBundle(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA) ?: return
+        val action = intent.action ?: run {
+            Log.e(TAG, "onReceive: intent action is null, ignoring broadcast")
+            return
+        }
+
+        val data = intent.extras?.getBundle(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA) ?: run {
+            Log.e(TAG, "onReceive: missing EXTRA_CALLKIT_INCOMING_DATA for action=$action")
+            return
+        }
+
+        Log.d(TAG, "onReceive: action=$action | silenceEvents=$silenceEvents")
 
         try {
             when (action) {
@@ -77,9 +85,10 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_INCOMING}" -> {
                     val fromUi = data.getBoolean("fromUi", false)
+                    Log.i(TAG, "ACTION_CALL_INCOMING — fromUi=$fromUi | callId=${data.getString(CallkitConstants.EXTRA_CALLKIT_ID)}")
 
                     if (fromUi) {
-                        // UI-triggered incoming (no notification sound)
+                        Log.d(TAG, "INCOMING (fromUi): launching CallkitIncomingActivity directly (no notification sound)")
                         sendEventFlutter(CallkitConstants.ACTION_CALL_INCOMING, data)
                         addCall(context, Data.fromBundle(data))
 
@@ -88,95 +97,142 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
                         context.startActivity(callIntent)
+                        Log.d(TAG, "INCOMING (fromUi): CallkitIncomingActivity started")
                     } else {
+                        Log.d(TAG, "INCOMING (push): showing incoming notification")
                         notificationManager()?.showIncomingNotification(data)
+                        Log.d(TAG, "INCOMING (push): notification shown, sending Flutter event")
                         sendEventFlutter(CallkitConstants.ACTION_CALL_INCOMING, data)
                         addCall(context, Data.fromBundle(data))
+                        Log.d(TAG, "INCOMING (push): call added to active calls")
                     }
                 }
 
                 /* ---------------- START ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_START}" -> {
+                    Log.i(TAG, "ACTION_CALL_START | callId=${data.getString(CallkitConstants.EXTRA_CALLKIT_ID)}")
                     CallkitNotificationService.startServiceWithAction(
                         context,
                         CallkitConstants.ACTION_CALL_START,
                         data
                     )
+                    Log.d(TAG, "START: CallkitNotificationService started")
                     sendEventFlutter(CallkitConstants.ACTION_CALL_START, data)
                     addCall(context, Data.fromBundle(data), true)
+                    Log.d(TAG, "START: call added as active (isAccepted=true)")
                 }
 
                 /* ---------------- ACCEPT ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_ACCEPT}" -> {
+                    Log.i(TAG, "ACTION_CALL_ACCEPT | callId=${data.getString(CallkitConstants.EXTRA_CALLKIT_ID)}")
+
                     FlutterCallkitIncomingPlugin.notifyEventCallbacks(
                         CallkitEventCallback.CallEvent.ACCEPT,
                         data
                     )
+                    Log.d(TAG, "ACCEPT: notified event callbacks")
 
                     CallkitNotificationService.startServiceWithAction(
                         context,
                         CallkitConstants.ACTION_CALL_ACCEPT,
                         data
                     )
+                    Log.d(TAG, "ACCEPT: CallkitNotificationService started with ACCEPT action")
 
                     sendEventFlutter(CallkitConstants.ACTION_CALL_ACCEPT, data)
                     addCall(context, Data.fromBundle(data), true)
+                    Log.d(TAG, "ACCEPT: call marked as active")
                 }
 
                 /* ---------------- DECLINE ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_DECLINE}" -> {
+                    Log.i(TAG, "ACTION_CALL_DECLINE | callId=${data.getString(CallkitConstants.EXTRA_CALLKIT_ID)}")
+
                     FlutterCallkitIncomingPlugin.notifyEventCallbacks(
                         CallkitEventCallback.CallEvent.DECLINE,
                         data
                     )
+                    Log.d(TAG, "DECLINE: notified event callbacks")
 
                     notificationManager()?.clearIncomingNotification(data, false)
+                    Log.d(TAG, "DECLINE: incoming notification cleared")
+
                     sendEventFlutter(CallkitConstants.ACTION_CALL_DECLINE, data)
                     removeCall(context, Data.fromBundle(data))
+                    Log.d(TAG, "DECLINE: call removed from active calls")
                 }
 
                 /* ---------------- ENDED ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_ENDED}" -> {
+                    Log.i(TAG, "ACTION_CALL_ENDED | callId=${data.getString(CallkitConstants.EXTRA_CALLKIT_ID)}")
+
                     notificationManager()?.clearIncomingNotification(data, false)
+                    Log.d(TAG, "ENDED: incoming notification cleared")
+
                     CallkitNotificationService.stopService(context)
+                    Log.d(TAG, "ENDED: CallkitNotificationService stopped")
+
                     sendEventFlutter(CallkitConstants.ACTION_CALL_ENDED, data)
                     removeCall(context, Data.fromBundle(data))
+                    Log.d(TAG, "ENDED: call removed from active calls")
                 }
 
                 /* ---------------- TIMEOUT ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_TIMEOUT}" -> {
+                    Log.i(TAG, "ACTION_CALL_TIMEOUT | callId=${data.getString(CallkitConstants.EXTRA_CALLKIT_ID)}")
+
                     val manager = notificationManager()
                     manager?.clearIncomingNotification(data, false)
+                    Log.d(TAG, "TIMEOUT: incoming notification cleared")
+
                     manager?.showMissCallNotification(data)
+                    Log.d(TAG, "TIMEOUT: missed call notification shown")
+
                     sendEventFlutter(CallkitConstants.ACTION_CALL_TIMEOUT, data)
                     removeCall(context, Data.fromBundle(data))
+                    Log.d(TAG, "TIMEOUT: call removed from active calls")
                 }
 
                 /* ---------------- CONNECTED ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_CONNECTED}" -> {
+                    Log.i(TAG, "ACTION_CALL_CONNECTED | callId=${data.getString(CallkitConstants.EXTRA_CALLKIT_ID)}")
+
                     notificationManager()?.showOngoingCallNotification(data, true)
+                    Log.d(TAG, "CONNECTED: ongoing call notification shown")
+
                     sendEventFlutter(CallkitConstants.ACTION_CALL_CONNECTED, data)
                 }
 
                 /* ---------------- CALLBACK ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_CALLBACK}" -> {
+                    Log.i(TAG, "ACTION_CALL_CALLBACK | callId=${data.getString(CallkitConstants.EXTRA_CALLKIT_ID)}")
+
                     notificationManager()?.clearMissCallNotification(data)
+                    Log.d(TAG, "CALLBACK: missed call notification cleared")
+
                     sendEventFlutter(CallkitConstants.ACTION_CALL_CALLBACK, data)
 
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                        Log.d(TAG, "CALLBACK: closing system dialogs (pre-Android 12)")
                         context.sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
+                    } else {
+                        Log.d(TAG, "CALLBACK: skipping ACTION_CLOSE_SYSTEM_DIALOGS (Android 12+)")
                     }
+                }
+
+                else -> {
+                    Log.e(TAG, "onReceive: unhandled action=$action")
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Receiver error", e)
+            Log.e(TAG, "onReceive: unhandled exception for action=$action", e)
         }
     }
 
@@ -185,7 +241,12 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
     /* -------------------------------------------------- */
 
     private fun sendEventFlutter(event: String, data: Bundle) {
-        if (silenceEvents) return
+        if (silenceEvents) {
+            Log.d(TAG, "sendEventFlutter: SKIPPED (silenceEvents=true) | event=$event")
+            return
+        }
+
+        Log.d(TAG, "sendEventFlutter: sending event=$event to Flutter")
 
         val android = mapOf(
             "isCustomNotification" to data.getBoolean(
@@ -289,6 +350,8 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
             "android" to android
         )
 
+        Log.d(TAG, "sendEventFlutter: payload built for callId=${forwardData["id"]} | nameCaller=${forwardData["nameCaller"]}")
         FlutterCallkitIncomingPlugin.sendEvent(event, forwardData)
+        Log.i(TAG, "sendEventFlutter: event=$event dispatched successfully to Flutter")
     }
 }
