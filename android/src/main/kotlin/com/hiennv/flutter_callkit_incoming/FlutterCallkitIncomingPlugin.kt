@@ -159,15 +159,36 @@ class FlutterCallkitIncomingPlugin :
 
                 /* ---- INCOMING ---- */
 
-                "showCallkitIncoming",
+                "showCallkitIncoming" -> {
+                    val data = Data(call.arguments() ?: HashMap())
+                    data.from = "notification"
+                    val bundle = data.toBundle()
+
+                    // Show notification DIRECTLY from the plugin – bypass the
+                    // broadcast system entirely for the fastest possible display
+                    // on low-RAM devices.
+                    callkitNotificationManager?.showIncomingNotification(bundle)
+
+                    // Send event to Flutter
+                    sendEvent(
+                        CallkitConstants.ACTION_CALL_INCOMING,
+                        buildFlutterEventData(bundle)
+                    )
+
+                    // Persist call data on a background thread
+                    Thread {
+                        try { addCall(context, data) }
+                        catch (_: Exception) {}
+                    }.start()
+
+                    result.success(true)
+                }
+
                 "showCallkitIncomingDirect" -> {
                     val data = Data(call.arguments() ?: HashMap())
                     data.from = "notification"
-
                     val bundle = data.toBundle().apply {
-                        if (call.method == "showCallkitIncomingDirect") {
-                            putBoolean("fromUi", true)
-                        }
+                        putBoolean("fromUi", true)
                     }
 
                     context?.sendBroadcast(
@@ -322,6 +343,56 @@ class FlutterCallkitIncomingPlugin :
         } catch (e: Exception) {
             result.error("error", e.message, null)
         }
+    }
+
+    /* ---------------- EVENT DATA BUILDER ---------------- */
+
+    private fun buildFlutterEventData(data: android.os.Bundle): Map<String, Any?> {
+        val android = mapOf(
+            "isCustomNotification" to data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_CUSTOM_NOTIFICATION, false),
+            "isCustomSmallExNotification" to data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_CUSTOM_SMALL_EX_NOTIFICATION, false),
+            "ringtonePath" to data.getString(CallkitConstants.EXTRA_CALLKIT_RINGTONE_PATH, ""),
+            "backgroundColor" to data.getString(CallkitConstants.EXTRA_CALLKIT_BACKGROUND_COLOR, ""),
+            "backgroundUrl" to data.getString(CallkitConstants.EXTRA_CALLKIT_BACKGROUND_URL, ""),
+            "actionColor" to data.getString(CallkitConstants.EXTRA_CALLKIT_ACTION_COLOR, ""),
+            "textColor" to data.getString(CallkitConstants.EXTRA_CALLKIT_TEXT_COLOR, ""),
+            "incomingCallNotificationChannelName" to data.getString(CallkitConstants.EXTRA_CALLKIT_INCOMING_CALL_NOTIFICATION_CHANNEL_NAME, ""),
+            "missedCallNotificationChannelName" to data.getString(CallkitConstants.EXTRA_CALLKIT_MISSED_CALL_NOTIFICATION_CHANNEL_NAME, ""),
+            "isImportant" to data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_IMPORTANT, true),
+            "isBot" to data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_BOT, false)
+        )
+
+        val missedCallNotification = mapOf(
+            "id" to data.getInt(CallkitConstants.EXTRA_CALLKIT_MISSED_CALL_ID),
+            "showNotification" to data.getBoolean(CallkitConstants.EXTRA_CALLKIT_MISSED_CALL_SHOW),
+            "count" to data.getInt(CallkitConstants.EXTRA_CALLKIT_MISSED_CALL_COUNT),
+            "subtitle" to data.getString(CallkitConstants.EXTRA_CALLKIT_MISSED_CALL_SUBTITLE),
+            "callbackText" to data.getString(CallkitConstants.EXTRA_CALLKIT_MISSED_CALL_CALLBACK_TEXT),
+            "isShowCallback" to data.getBoolean(CallkitConstants.EXTRA_CALLKIT_MISSED_CALL_CALLBACK_SHOW)
+        )
+
+        val callingNotification = mapOf(
+            "id" to data.getString(CallkitConstants.EXTRA_CALLKIT_CALLING_ID),
+            "showNotification" to data.getBoolean(CallkitConstants.EXTRA_CALLKIT_CALLING_SHOW),
+            "subtitle" to data.getString(CallkitConstants.EXTRA_CALLKIT_CALLING_SUBTITLE),
+            "callbackText" to data.getString(CallkitConstants.EXTRA_CALLKIT_CALLING_HANG_UP_TEXT),
+            "isShowCallback" to data.getBoolean(CallkitConstants.EXTRA_CALLKIT_CALLING_HANG_UP_SHOW)
+        )
+
+        return mapOf(
+            "id" to data.getString(CallkitConstants.EXTRA_CALLKIT_ID, ""),
+            "nameCaller" to data.getString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER, ""),
+            "avatar" to data.getString(CallkitConstants.EXTRA_CALLKIT_AVATAR, ""),
+            "number" to data.getString(CallkitConstants.EXTRA_CALLKIT_HANDLE, ""),
+            "type" to data.getInt(CallkitConstants.EXTRA_CALLKIT_TYPE, 0),
+            "duration" to data.getLong(CallkitConstants.EXTRA_CALLKIT_DURATION, 0L),
+            "textAccept" to data.getString(CallkitConstants.EXTRA_CALLKIT_TEXT_ACCEPT, ""),
+            "textDecline" to data.getString(CallkitConstants.EXTRA_CALLKIT_TEXT_DECLINE, ""),
+            "extra" to data.getSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA),
+            "missedCallNotification" to missedCallNotification,
+            "callingNotification" to callingNotification,
+            "android" to android
+        )
     }
 
     /* ---------------- EVENTS ---------------- */

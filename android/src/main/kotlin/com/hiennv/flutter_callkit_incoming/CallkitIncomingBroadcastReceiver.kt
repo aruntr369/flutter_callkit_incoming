@@ -56,9 +56,20 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
     /* Helpers                                            */
     /* -------------------------------------------------- */
 
-    private fun notificationManager(): CallkitNotificationManager? =
+    /**
+     * Returns the shared [CallkitNotificationManager] from the plugin when
+     * available, or creates a standalone fallback instance so that
+     * notifications still work even when the OS has killed the Flutter
+     * engine / plugin (common on low-RAM devices).
+     */
+    private fun getOrCreateNotificationManager(context: Context): CallkitNotificationManager {
         FlutterCallkitIncomingPlugin.getInstance()
-            ?.getCallkitNotificationManager()
+            ?.getCallkitNotificationManager()?.let { return it }
+
+        Log.w(TAG, "Plugin instance is null – creating fallback CallkitNotificationManager")
+        val soundPlayer = CallkitSoundPlayerManager(context.applicationContext)
+        return CallkitNotificationManager(context.applicationContext, soundPlayer)
+    }
 
     /* -------------------------------------------------- */
     /* Receiver                                           */
@@ -81,7 +92,7 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
                     if (fromUi) {
                         // UI-triggered incoming (no notification sound)
                         sendEventFlutter(CallkitConstants.ACTION_CALL_INCOMING, data)
-                        addCall(context, Data.fromBundle(data))
+                        addCallAsync(context, Data.fromBundle(data))
 
                         val callIntent =
                             CallkitIncomingActivity.getIntent(context, data).apply {
@@ -89,9 +100,9 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
                             }
                         context.startActivity(callIntent)
                     } else {
-                        notificationManager()?.showIncomingNotification(data)
+                        getOrCreateNotificationManager(context).showIncomingNotification(data)
                         sendEventFlutter(CallkitConstants.ACTION_CALL_INCOMING, data)
-                        addCall(context, Data.fromBundle(data))
+                        addCallAsync(context, Data.fromBundle(data))
                     }
                 }
 
@@ -104,7 +115,7 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
                         data
                     )
                     sendEventFlutter(CallkitConstants.ACTION_CALL_START, data)
-                    addCall(context, Data.fromBundle(data), true)
+                    addCallAsync(context, Data.fromBundle(data), true)
                 }
 
                 /* ---------------- ACCEPT ---------------- */
@@ -115,14 +126,25 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
                         data
                     )
 
-                    CallkitNotificationService.startServiceWithAction(
-                        context,
-                        CallkitConstants.ACTION_CALL_ACCEPT,
-                        data
-                    )
-
+                    // Send the event to Dart FIRST so the callback always fires,
+                    // even if starting the foreground service fails below.
                     sendEventFlutter(CallkitConstants.ACTION_CALL_ACCEPT, data)
-                    addCall(context, Data.fromBundle(data), true)
+                    addCallAsync(context, Data.fromBundle(data), true)
+
+                    try {
+                        CallkitNotificationService.startServiceWithAction(
+                            context,
+                            CallkitConstants.ACTION_CALL_ACCEPT,
+                            data
+                        )
+                    } catch (e: Exception) {
+                        // On Android 12+ starting a foreground service from a
+                        // BroadcastReceiver may throw. Clear the notification
+                        // manually in that case.
+                        Log.e(TAG, "Failed to start accept service", e)
+                        getOrCreateNotificationManager(context)
+                            .clearIncomingNotification(data, true)
+                    }
                 }
 
                 /* ---------------- DECLINE ---------------- */
@@ -133,41 +155,41 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
                         data
                     )
 
-                    notificationManager()?.clearIncomingNotification(data, false)
+                    getOrCreateNotificationManager(context).clearIncomingNotification(data, false)
                     sendEventFlutter(CallkitConstants.ACTION_CALL_DECLINE, data)
-                    removeCall(context, Data.fromBundle(data))
+                    removeCallAsync(context, Data.fromBundle(data))
                 }
 
                 /* ---------------- ENDED ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_ENDED}" -> {
-                    notificationManager()?.clearIncomingNotification(data, false)
+                    getOrCreateNotificationManager(context).clearIncomingNotification(data, false)
                     CallkitNotificationService.stopService(context)
                     sendEventFlutter(CallkitConstants.ACTION_CALL_ENDED, data)
-                    removeCall(context, Data.fromBundle(data))
+                    removeCallAsync(context, Data.fromBundle(data))
                 }
 
                 /* ---------------- TIMEOUT ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_TIMEOUT}" -> {
-                    val manager = notificationManager()
-                    manager?.clearIncomingNotification(data, false)
-                    manager?.showMissCallNotification(data)
+                    val manager = getOrCreateNotificationManager(context)
+                    manager.clearIncomingNotification(data, false)
+                    manager.showMissCallNotification(data)
                     sendEventFlutter(CallkitConstants.ACTION_CALL_TIMEOUT, data)
-                    removeCall(context, Data.fromBundle(data))
+                    removeCallAsync(context, Data.fromBundle(data))
                 }
 
                 /* ---------------- CONNECTED ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_CONNECTED}" -> {
-                    notificationManager()?.showOngoingCallNotification(data, true)
+                    getOrCreateNotificationManager(context).showOngoingCallNotification(data, true)
                     sendEventFlutter(CallkitConstants.ACTION_CALL_CONNECTED, data)
                 }
 
                 /* ---------------- CALLBACK ---------------- */
 
                 "${context.packageName}.${CallkitConstants.ACTION_CALL_CALLBACK}" -> {
-                    notificationManager()?.clearMissCallNotification(data)
+                    getOrCreateNotificationManager(context).clearMissCallNotification(data)
                     sendEventFlutter(CallkitConstants.ACTION_CALL_CALLBACK, data)
 
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
@@ -178,6 +200,31 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
         } catch (e: Exception) {
             Log.e(TAG, "Receiver error", e)
         }
+
+    }
+
+    /* -------------------------------------------------- */
+    /* Async Call Storage (off main thread)               */
+    /* -------------------------------------------------- */
+
+    private fun addCallAsync(context: Context, data: Data, isAccepted: Boolean = false) {
+        Thread {
+            try {
+                addCall(context, data, isAccepted)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to persist call", e)
+            }
+        }.start()
+    }
+
+    private fun removeCallAsync(context: Context, data: Data) {
+        Thread {
+            try {
+                removeCall(context, data)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to remove call", e)
+            }
+        }.start()
     }
 
     /* -------------------------------------------------- */

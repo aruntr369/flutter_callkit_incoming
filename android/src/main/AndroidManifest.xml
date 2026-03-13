@@ -18,8 +18,8 @@
         android:name="${applicationId}.PERMISSION_CALL"
         android:protectionLevel="normal" />
 
-    <application>
-        android:largeHeap="true"
+    <application
+        android:largeHeap="true">
 
         <activity
             android:name="com.hiennv.flutter_callkit_incoming.CallkitIncomingActivity"

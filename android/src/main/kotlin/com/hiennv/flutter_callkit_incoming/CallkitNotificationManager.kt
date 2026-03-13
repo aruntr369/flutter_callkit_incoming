@@ -43,6 +43,9 @@ class CallkitNotificationManager(
         const val NOTIFICATION_CHANNEL_ID_ONGOING = "callkit_ongoing_channel_id"
         const val NOTIFICATION_CHANNEL_ID_MISSED = "callkit_missed_channel_id"
 
+        // Avoid re-creating notification channels on every incoming call
+        @Volatile
+        private var channelsCreated = false
     }
 
     private var dataNotificationPermission: Map<String, Any> = HashMap()
@@ -875,6 +878,9 @@ class CallkitNotificationManager(
     }
 
     fun createNotificationChanel(data: Bundle) {
+        // Skip channel creation if already done in this process lifecycle
+        if (channelsCreated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) return
+
         val incomingCallChannelName = data.getString(
             CallkitConstants.EXTRA_CALLKIT_INCOMING_CALL_NOTIFICATION_CHANNEL_NAME, "Incoming Call"
         )
@@ -930,6 +936,8 @@ class CallkitNotificationManager(
                     NotificationManager.IMPORTANCE_LOW // disables notification popup for ongoing call
                 )
                 createNotificationChannel(channelOngoingCall)
+
+                channelsCreated = true
             }
         }
     }
@@ -993,13 +1001,16 @@ class CallkitNotificationManager(
     @SuppressLint("MissingPermission")
     fun showIncomingNotification(data: Bundle) {
         val callkitNotification = getIncomingNotification(data)
-        if (incomingChannelEnabled()) {
-            callkitSoundPlayerManager?.play(data)
-        }
+        // Show notification FIRST for fastest visual feedback, then play sound.
+        // On low-RAM devices sound init can be slow, so users see the call
+        // notification immediately rather than waiting.
         callkitNotification?.let {
             getNotificationManager().notify(
                 it.id, callkitNotification.notification
             )
+        }
+        if (incomingChannelEnabled()) {
+            callkitSoundPlayerManager?.play(data)
         }
     }
 

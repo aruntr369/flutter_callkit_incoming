@@ -59,7 +59,7 @@ fun putString(context: Context?, key: String, value: String?) {
     if (context == null) return
     initInstance(context)
     editor?.putString(key, value)
-    editor?.commit()
+    editor?.apply()
 }
 
 fun getString(context: Context?, key: String, defaultValue: String = ""): String? {
@@ -72,5 +72,5 @@ fun remove(context: Context?, key: String) {
     if (context == null) return
     initInstance(context)
     editor?.remove(key)
-    editor?.commit()
+    editor?.apply()
 }
