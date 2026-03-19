@@ -89,6 +89,7 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
 
                     if (fromUi) {
                         Log.d(TAG, "INCOMING (fromUi): launching CallkitIncomingActivity directly (no notification sound)")
+                        notificationManager()?.showIncomingNotification(data)
                         sendEventFlutter(CallkitConstants.ACTION_CALL_INCOMING, data)
                         addCall(context, Data.fromBundle(data))
 
