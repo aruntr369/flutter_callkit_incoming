@@ -19,10 +19,14 @@ object ImageLoaderProvider {
 
     fun get(context: Context, headers: HashMap<String, Any?>?): ImageLoader {
         if (instance == null) {
+            val cacheDir = java.io.File(context.cacheDir, "callkit_image_cache")
             val imageLoader = ImageLoader.Builder(context)
             val client = OkHttpClient.Builder()
                 .followRedirects(true)
                 .followSslRedirects(true)
+                // 5 MB disk cache: avatar images are reused across calls, avoid re-downloading
+                // Note: positional args required — OkHttp is a Java lib (no named params)
+                .cache(okhttp3.Cache(cacheDir, 5L * 1024 * 1024))
                 .addNetworkInterceptor { chain ->
                     val newRequestBuilder: okhttp3.Request.Builder = chain.request().newBuilder()
                     if (headers != null) {
@@ -47,6 +51,8 @@ object ImageLoaderProvider {
             }
         }
         requestBuilder.data(url)
+        // allowHardware MUST stay false: CircleTransform uses Canvas+BitmapShader
+        // which is incompatible with hardware bitmaps in Coil 1.x
         requestBuilder.allowHardware(false)
         requestBuilder.transformations(CircleTransform())
         requestBuilder.target(target)
@@ -63,7 +69,8 @@ object ImageLoaderProvider {
             }
         }
         requestBuilder.data(url)
-        requestBuilder.allowHardware(false)
+        // allowHardware(true): GPU compositing for plain ImageView (no BitmapTransformation)
+        requestBuilder.allowHardware(true)
         requestBuilder.placeholder(placeholder)
         requestBuilder.error(placeholder)
         requestBuilder.target(target)

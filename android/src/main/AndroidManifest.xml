@@ -27,6 +27,7 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:turnScreenOn="true"
+            android:showWhenLocked="true"
             android:configChanges="orientation"
             android:exported="true"
             android:launchMode="singleInstance"

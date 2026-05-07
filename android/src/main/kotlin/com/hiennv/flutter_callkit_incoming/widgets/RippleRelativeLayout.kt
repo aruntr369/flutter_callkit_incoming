@@ -117,6 +117,9 @@ class RippleRelativeLayout : RelativeLayout {
 
         init {
             visibility = INVISIBLE
+            // Cache draw commands on the GPU so the RenderThread handles redraws,
+            // freeing the main/UI thread on low-spec devices.
+            setLayerType(LAYER_TYPE_HARDWARE, null)
         }
     }
 
@@ -137,9 +140,17 @@ class RippleRelativeLayout : RelativeLayout {
         }
     }
 
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        stopRippleAnimation()
+    }
+
     companion object {
-        private const val DEFAULT_RIPPLE_COUNT = 5
-        private const val DEFAULT_DURATION_TIME = 6000
-        private const val DEFAULT_SCALE = 6.0f
+        // Reduced from 5 → 3 to cut concurrent animators from 15 to 9 (perf fix)
+        private const val DEFAULT_RIPPLE_COUNT = 3
+        // Shorter duration reduces total frame count needed per cycle
+        private const val DEFAULT_DURATION_TIME = 4000
+        // Smaller scale = less GPU overdraw per frame
+        private const val DEFAULT_SCALE = 4.0f
     }
 }

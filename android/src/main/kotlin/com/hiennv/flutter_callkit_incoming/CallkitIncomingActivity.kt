@@ -1,6 +1,7 @@
 package com.hiennv.flutter_callkit_incoming
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -58,6 +59,7 @@ class CallkitIncomingActivity : Activity() {
     }
 
     private val endedReceiver = EndedCallkitIncomingBroadcastReceiver()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     /* -------------------------------------------------- */
     /* Views                                              */
@@ -244,7 +246,7 @@ private fun setWindowFlag(bits: Int, on: Boolean) {
         wakeLock(duration)
 
         val remaining = duration - abs(System.currentTimeMillis() - start)
-        Handler(Looper.getMainLooper()).postDelayed({
+        mainHandler.postDelayed({
             if (!isFinishing) finishTask()
         }, remaining)
     }
@@ -278,12 +280,22 @@ private fun setWindowFlag(bits: Int, on: Boolean) {
         (llAction.layoutParams as MarginLayoutParams).bottomMargin =
             Utils.getNavigationBarHeight(this)
 
-        llBackgroundAnimation.startRippleAnimation()
-        ivAcceptCall.animation =
-            AnimationUtils.loadAnimation(this, R.anim.shake_anim)
+        // On low-RAM devices skip heavy continuous animations to keep the UI thread free.
+        // Buttons will still be fully functional — only decorative animations are skipped.
+        if (!isLowRamDevice()) {
+            llBackgroundAnimation.startRippleAnimation()
+            ivAcceptCall.animation =
+                AnimationUtils.loadAnimation(this, R.anim.shake_anim)
+        }
 
         ivAcceptCall.setOnClickListener { onAcceptClick() }
         ivDeclineCall.setOnClickListener { onDeclineClick() }
+    }
+
+    /** Returns true on budget/low-memory Android devices (< ~1 GB RAM). */
+    private fun isLowRamDevice(): Boolean {
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        return am.isLowRamDevice
     }
 
     /* -------------------------------------------------- */
@@ -328,7 +340,7 @@ private fun setWindowFlag(bits: Int, on: Boolean) {
     /* -------------------------------------------------- */
 
     private fun finishDelayed() =
-        Handler(Looper.getMainLooper()).postDelayed({ finishTask() }, 1000)
+        mainHandler.postDelayed({ finishTask() }, 1000)
 
     private fun finishTask() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)
@@ -337,6 +349,7 @@ private fun setWindowFlag(bits: Int, on: Boolean) {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
         unregisterReceiver(endedReceiver)
         super.onDestroy()
     }
