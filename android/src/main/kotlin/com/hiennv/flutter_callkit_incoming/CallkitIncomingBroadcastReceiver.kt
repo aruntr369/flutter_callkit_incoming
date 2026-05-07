@@ -87,6 +87,14 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
                     val fromUi = data.getBoolean("fromUi", false)
                     Log.i(TAG, "ACTION_CALL_INCOMING — fromUi=$fromUi | callId=${data.getString(CallkitConstants.EXTRA_CALLKIT_ID)}")
 
+                    // Start the Foreground Service immediately to give the app
+                    // high-priority execution state on Android Go / Doze.
+                    CallkitNotificationService.startServiceWithAction(
+                        context,
+                        CallkitConstants.ACTION_CALL_INCOMING,
+                        data
+                    )
+
                     if (fromUi) {
                         Log.d(TAG, "INCOMING (fromUi): launching CallkitIncomingActivity directly (no notification sound)")
                         notificationManager()?.showIncomingNotification(data)
@@ -96,6 +104,7 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
                         val callIntent =
                             CallkitIncomingActivity.getIntent(context, data).apply {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                             }
                         context.startActivity(callIntent)
                         Log.d(TAG, "INCOMING (fromUi): CallkitIncomingActivity started")

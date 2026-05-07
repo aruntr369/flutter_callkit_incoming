@@ -216,7 +216,7 @@ class CallkitNotificationManager(
         val isCustomSmallExNotification =
             data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_CUSTOM_SMALL_EX_NOTIFICATION, false)
         if (isCustomNotification) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 
                 val caller = data.getString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER, "")
                 val person = Person.Builder().setName(caller).setImportant(
@@ -312,7 +312,7 @@ class CallkitNotificationManager(
                 )
             }
             val caller = data.getString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER, "")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val person = Person.Builder().setName(caller).setImportant(
                     data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_IMPORTANT, true)
                 ).setBot(data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_BOT, false)).build()
@@ -628,7 +628,7 @@ class CallkitNotificationManager(
         val isCustomNotification =
             data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_CUSTOM_NOTIFICATION, false)
         if (isCustomNotification) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 
                 val caller = data.getString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER, "")
                 val person = Person.Builder().setName(caller).setImportant(
